@@ -5,24 +5,43 @@ import Swal from "sweetalert2";
 import { map } from "rxjs/operators";
 import { User } from './user.model';
 import { AngularFirestore } from '@angular/fire/firestore';
+import { Store } from '@ngrx/store';
+import { AppState } from '../app.reducers';
+import { ActivarLoadingAction, DesactivarLoadingAction } from '../shared/ui.actions';
+import { SetUserAction } from './auth.actions';
+import { Subscription } from 'rxjs';
 
 @Injectable({
   providedIn: "root"
 })
 export class AuthService {
+
+  private subscription: Subscription = new Subscription();
+
   constructor(
     private afAuth: AngularFireAuth,
     private router: Router,
-    private afDB: AngularFirestore
+    private afDB: AngularFirestore,
+    private store: Store<AppState>
     ) {}
 
   initAuthListener() {
     this.afAuth.authState.subscribe(fbUser => {
       console.log(fbUser);
+      if (fbUser){
+        this.subscription = this.afDB.doc(`${fbUser.uid}/usuario`).valueChanges()
+            .subscribe(userObj => {
+              this.store.dispatch(new SetUserAction(userObj));
+            });
+      } else {
+        this.subscription.unsubscribe();
+      }
     });
   }
 
   crearUsuario(nombre, email, password) {
+
+    this.store.dispatch(new ActivarLoadingAction());
     this.afAuth.auth
       .createUserWithEmailAndPassword(email, password)
       .then(resp => {
@@ -42,10 +61,12 @@ export class AuthService {
       })
       .catch(error => {
         Swal.fire("Error en el registro", error.message, "error");
-      });
+      })
+      .finally(() => this.store.dispatch(new DesactivarLoadingAction()));
   }
 
   login(email: string, password: string) {
+    this.store.dispatch(new ActivarLoadingAction());
     this.afAuth.auth
       .signInWithEmailAndPassword(email, password)
       .then(resp => {
@@ -54,7 +75,8 @@ export class AuthService {
       })
       .catch(error => {
         Swal.fire("Error en el login", error.message, "error");
-      });
+      })
+      .finally(() => this.store.dispatch(new DesactivarLoadingAction()));
   }
 
   logout() {
